@@ -16,10 +16,7 @@ import org.apache.hadoop.util.ToolRunner;
 import org.apache.log4j.Logger;
 
 import java.io.IOException;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Collections;
+import java.util.*;
 import java.util.regex.Pattern;
 import java.util.regex.Matcher;
 
@@ -32,9 +29,9 @@ public class LinkGraph extends Configured implements Tool {
 
     private static final Logger LOG = Logger.getLogger(LinkGraph.class);
     private static int numberOfPages ;
-    private static List<String> allPageIds = new ArrayList<String>();
-    private static HashMap<String, String> pageIdStore = new HashMap<String, String>();
+    private static Set<String> allPageIds = new TreeSet<>();
     private static double decayValue ;
+    private static final String DELIMITER = "#%^^%#";
 
     public static void main(String[] args) throws Exception {
         int res = ToolRunner.run(new LinkGraph(), args);
@@ -87,16 +84,16 @@ public class LinkGraph extends Configured implements Tool {
             String wikiLine = lineText.toString();
             Pattern linkPat = Pattern .compile("\\[\\[.*?]\\]");
             Matcher m = linkPat.matcher(wikiLine); // extract outgoing links
-            String pageId = getValueIn("id", wikiLine);
-            String pageName = getValueIn("title", wikiLine);
-            numberOfPages+=1;
-            pageIdStore.put(pageName, pageId);
-            allPageIds.add(pageId);
+            String pageName = getValueIn("title", wikiLine).trim();
+            allPageIds.add(pageName);
             while(m.find()) { // loop on each outgoing link
-                String url = m.group().replace("[[", "").replace("]]", ""); // drop the brackets and any nested ones if any
-                if(!url.isEmpty()) {
-                    context.write(new Text(pageId), new Text(url));
-//                    LOG.info("Mapper => "+ key.toString() +": "+url );
+                String url = m.group()
+                        .replace("[[", "")
+                        .replace("]]", ""); // drop the brackets and any nested ones if any
+                if(url!=null && !url.isEmpty()) {
+                    allPageIds.add(url.trim());
+                    context.write(new Text(pageName), new Text(url.trim()));
+                    LOG.info("Mapper => "+ pageName +": "+url );
                 }
             }
         }
@@ -107,28 +104,33 @@ public class LinkGraph extends Configured implements Tool {
         @Override
         public void reduce(Text pageId, Iterable<Text> outLink, Context context)
                 throws IOException, InterruptedException {
-            List<String> outLinkIds = new ArrayList<String>();
+            numberOfPages = allPageIds.size();
+            List<String> outLinkIds = new ArrayList<>();
             int noOfOutLLinks;
             for(Text eachOutLink: outLink){
                 if (eachOutLink !=null && !eachOutLink.toString().isEmpty()) {
-                    outLinkIds.add(pageIdStore.get(eachOutLink.toString()));
+                    LOG.info("Reducer => Outlink -> "+eachOutLink);
+                    outLinkIds.add(eachOutLink.toString().trim());
                 }
             }
-            List<Double> initialRankVector = new ArrayList<Double>(
+            List<Double> initialRankVector = new ArrayList<>(
                     Collections.nCopies(numberOfPages, (1/(double)numberOfPages)));
             noOfOutLLinks = outLinkIds.size();
-            StringBuffer outLinkFormatted = new StringBuffer("");
-            StringBuffer initialRankOutput = new StringBuffer("");
+            StringBuffer outLinkFormatted = new StringBuffer();
+            StringBuffer initialRankOutput = new StringBuffer();
             int index = 0;
             for (String eachPageId : allPageIds){
                 double currentValue = (1/numberOfPages)*(1-decayValue);
                 if(outLinkIds.contains(eachPageId)){
                     currentValue+= decayValue*(1/noOfOutLLinks);
                 }
-                initialRankOutput.append(initialRankVector.get(index)+" ");
-                outLinkFormatted.append(currentValue+" ");
+                initialRankOutput.append(initialRankVector.get(index).toString()+DELIMITER);
+                outLinkFormatted.append(currentValue+DELIMITER);
                 index++;
             }
+
+//            LOG.info("Reducer => Stochastic Vector -> "+outLinkFormatted.toString());
+//            LOG.info("Reducer => Initial Rank Vector -> "+initialRankOutput.toString());
 
             String result = putValueIn("outlinks", outLinkFormatted.toString());
             result += putValueIn("initialRankVector", initialRankOutput.toString());
