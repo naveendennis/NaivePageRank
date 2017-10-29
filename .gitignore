@@ -1,0 +1,6 @@
+build/
+data/
+output/
+*.jar
+*.class
+.idea
