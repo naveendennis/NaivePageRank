@@ -2,8 +2,6 @@ package org.dennis.pagerank;
 
 import org.apache.hadoop.conf.Configured;
 import org.apache.hadoop.fs.Path;
-import org.apache.hadoop.io.DoubleWritable;
-import org.apache.hadoop.io.IntWritable;
 import org.apache.hadoop.io.LongWritable;
 import org.apache.hadoop.io.Text;
 import org.apache.hadoop.mapreduce.Job;
@@ -20,6 +18,8 @@ import java.util.*;
 import java.util.regex.Pattern;
 import java.util.regex.Matcher;
 
+import static org.dennis.utils.Utils.*;
+
 /**
  * @author Naveen Dennis Barnabas
  * @email nbarnaba@uncc.edu
@@ -30,28 +30,12 @@ public class LinkGraph extends Configured implements Tool {
     private static final Logger LOG = Logger.getLogger(LinkGraph.class);
     private static int numberOfPages ;
     private static Set<String> allPageIds = new TreeSet<>();
-    private static double decayValue ;
-    private static final String DELIMITER = "#%^^%#";
 
     public static void main(String[] args) throws Exception {
         int res = ToolRunner.run(new LinkGraph(), args);
         System.exit(res);
     }
 
-    private static String getValueIn(String tag, String line){
-        String openingTag = "<"+tag+">";
-        String closingTag = "</"+tag+">";
-        final Pattern title_pattern = Pattern.compile(openingTag+"(.+?)"+closingTag);
-        final Matcher title_matcher = title_pattern.matcher(line);
-        title_matcher.find();
-        return title_matcher.group(1);
-    }
-
-    private static String putValueIn(String tag, String value){
-        String openingTag = "<"+tag+">";
-        String closingTag = "</"+tag+">";
-        return openingTag+value.trim()+closingTag;
-    }
 
     public int run(String[] args) throws Exception {
         Job job = Job.getInstance(getConf(), " org.dennis.pagerank.LinkGraph ");
@@ -59,11 +43,7 @@ public class LinkGraph extends Configured implements Tool {
 
         FileInputFormat.addInputPaths(job, args[0]);
         FileOutputFormat.setOutputPath(job, new Path(args[1]));
-        if (args.length == 2){
-            decayValue = 0.85;
-        }else {
-            decayValue = Double.parseDouble(args[2]);
-        }
+
         job.setMapperClass(Map.class);
         job.setReducerClass(Reduce.class);
         job.setMapOutputKeyClass(Text.class);
@@ -105,22 +85,20 @@ public class LinkGraph extends Configured implements Tool {
         public void reduce(Text pageId, Iterable<Text> outLink, Context context)
                 throws IOException, InterruptedException {
             numberOfPages = allPageIds.size();
+            LOG.info("Number of Pages => "+numberOfPages);
             List<String> outLinkIds = new ArrayList<>();
             StringBuffer outlinkStrBuff = new StringBuffer();
             for(Text eachOutLink: outLink){
                 if (eachOutLink !=null && !eachOutLink.toString().isEmpty()) {
-                    LOG.info("Reducer => Outlink -> "+eachOutLink);
                     outLinkIds.add(eachOutLink.toString().trim());
                     outlinkStrBuff.append(eachOutLink+DELIMITER);
                 }
             }
 
-//            LOG.info("Reducer => Stochastic Vector -> "+outLinkFormatted.toString());
-//            LOG.info("Reducer => Initial Rank Vector -> "+initialRankOutput.toString());
 
-            String result = putValueIn("outlinkSize", String.valueOf(outLinkIds.size()));
-            result += putValueIn("initialPageRank", String.valueOf(1/(double)numberOfPages));
-            result += putValueIn("outlinks", outlinkStrBuff.toString());
+            String result = START_DELIMITER+putValueIn(OUTLINK_SIZE_TAG, String.valueOf(outLinkIds.size()));
+            result += putValueIn(PAGE_RANK_TAG, String.valueOf(1/(double)numberOfPages));
+            result += putValueIn(OUTLINKS_TAG, outlinkStrBuff.toString());
             context.write(pageId, new Text(result));
 
         }
