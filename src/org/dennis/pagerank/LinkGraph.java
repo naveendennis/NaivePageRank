@@ -106,34 +106,21 @@ public class LinkGraph extends Configured implements Tool {
                 throws IOException, InterruptedException {
             numberOfPages = allPageIds.size();
             List<String> outLinkIds = new ArrayList<>();
-            int noOfOutLLinks;
+            StringBuffer outlinkStrBuff = new StringBuffer();
             for(Text eachOutLink: outLink){
                 if (eachOutLink !=null && !eachOutLink.toString().isEmpty()) {
                     LOG.info("Reducer => Outlink -> "+eachOutLink);
                     outLinkIds.add(eachOutLink.toString().trim());
+                    outlinkStrBuff.append(eachOutLink+DELIMITER);
                 }
-            }
-            List<Double> initialRankVector = new ArrayList<>(
-                    Collections.nCopies(numberOfPages, (1/(double)numberOfPages)));
-            noOfOutLLinks = outLinkIds.size();
-            StringBuffer outLinkFormatted = new StringBuffer();
-            StringBuffer initialRankOutput = new StringBuffer();
-            int index = 0;
-            for (String eachPageId : allPageIds){
-                double currentValue = (1/numberOfPages)*(1-decayValue);
-                if(outLinkIds.contains(eachPageId)){
-                    currentValue+= decayValue*(1/noOfOutLLinks);
-                }
-                initialRankOutput.append(initialRankVector.get(index).toString()+DELIMITER);
-                outLinkFormatted.append(currentValue+DELIMITER);
-                index++;
             }
 
 //            LOG.info("Reducer => Stochastic Vector -> "+outLinkFormatted.toString());
 //            LOG.info("Reducer => Initial Rank Vector -> "+initialRankOutput.toString());
 
-            String result = putValueIn("outlinks", outLinkFormatted.toString());
-            result += putValueIn("initialRankVector", initialRankOutput.toString());
+            String result = putValueIn("outlinkSize", String.valueOf(outLinkIds.size()));
+            result += putValueIn("initialPageRank", String.valueOf(1/(double)numberOfPages));
+            result += putValueIn("outlinks", outlinkStrBuff.toString());
             context.write(pageId, new Text(result));
 
         }
