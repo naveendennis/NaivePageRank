@@ -32,7 +32,8 @@ public class PageRank extends Configured implements Tool{
     private static final Logger LOG = Logger.getLogger(PageRank.class);
     private static final double decayValue = 0.85;
     private static java.util.Map<String, String> pageRankTable = new HashMap<>();
-    private static final Pattern RECORD_SEPERATOR = Pattern.compile("(.+)"+START_DELIMITER+"(.+)");
+    private static final Pattern RECORD_SEPERATOR = Pattern.compile(START_DELIMITER);
+    private static final Pattern OUTLINK_SEPERATOR = Pattern.compile(DELIMITER);
 
     public static void main(String[] args) throws Exception {
 
@@ -43,12 +44,12 @@ public class PageRank extends Configured implements Tool{
     @Override
     public int run(String[] args) throws Exception {
         int res = ToolRunner.run(new LinkGraph(), new String[]{args[0], LINK_GRAPH});
-        if (res == 0 ){
-            res = ToolRunner.run(new PRInitialize(), new String[]{LINK_GRAPH, TEMP_PAGE_RANK});
-        }
-        String initialLocation = LINK_GRAPH;
-        for (int i = 0 ; i <= 10 ; i++) {
 
+        String initialLocation = LINK_GRAPH;
+        for (int i = 0 ; i < 10 ; i++) {
+            if (res == 0 ){
+                res = ToolRunner.run(new PRInitialize(), new String[]{initialLocation, TEMP_PAGE_RANK+"_i_"+i});
+            }
             if (res == 0) {
                 res = ToolRunner.run(new PRCompute(),
                         new String[]{initialLocation, TEMP_PAGE_RANK+"_d_"+i});
@@ -58,7 +59,10 @@ public class PageRank extends Configured implements Tool{
                         new String[]{initialLocation, TEMP_PAGE_RANK + "_" + i});
             }
             initialLocation = TEMP_PAGE_RANK+"_"+i;
+            pageRankTable.clear();
         }
+        res = ToolRunner.run(new PRUpdate(),
+                new String[]{initialLocation, TEMP_PAGE_RANK + "_" + i});
         renameFile(getConf(), initialLocation, args[1]);
         return res;
     }
@@ -91,14 +95,11 @@ public class PageRank extends Configured implements Tool{
             @Override
             public void map(LongWritable offset, Text lineText, Context context)
                     throws IOException, InterruptedException {
-                    Matcher m1 = RECORD_SEPERATOR.matcher(lineText.toString());
-                    String key = null;
-                    String content = null;
-                    while(m1.find()){
-                        key = m1.group(1).trim();
-                        content = m1.group(2);
-                    }
+                    String [] values = RECORD_SEPERATOR.split(lineText.toString());
                     LOG.info("INitmapper => key: "+lineText.toString());
+                    String key = values[0].trim();
+                    String content = values[1];
+
                     String pageRankValue = getValueIn(PAGE_RANK_TAG, content.toString());
                     pageRankTable.put(key, pageRankValue);
                     context.write(new Text(key), new Text(pageRankValue));
@@ -145,19 +146,18 @@ public class PageRank extends Configured implements Tool{
             @Override
             public void map(LongWritable offset, Text lineText, Context context)
                     throws IOException, InterruptedException {
-                Matcher m1 = RECORD_SEPERATOR.matcher(lineText.toString());
-                String key = null;
-                String content = null;
-                while(m1.find()){
-                    key = m1.group(1).trim();
-                    content = m1.group(2);
-                }
-                String[] outLinksList = getValueIn(OUTLINKS_TAG, content.toString()).split(DELIMITER);
+                String [] values = RECORD_SEPERATOR.split(lineText.toString());
+                String key = values[0].trim();
+                String content = values[1];
+                String[] outLinksList = OUTLINK_SEPERATOR.split(getValueIn(OUTLINKS_TAG, content.toString()));
                 int outLinksLength = outLinksList.length;
                 for (String eachOutlink : outLinksList) {
-                    context.write(new Text(key), new DoubleWritable(
-                            Double.parseDouble(
-                                    pageRankTable.get(eachOutlink)) / outLinksLength));
+                    LOG.info("PRComputeMap: "+eachOutlink.trim()+" => "+pageRankTable.get(eachOutlink.trim()));
+                    if (pageRankTable.containsKey(eachOutlink.trim())) {
+                        context.write(new Text(key), new DoubleWritable(
+                                Double.parseDouble(
+                                        pageRankTable.get(eachOutlink.trim())) / outLinksLength));
+                    }
                 }
 
             }
@@ -202,15 +202,11 @@ public class PageRank extends Configured implements Tool{
         public static class PRUpdateMap extends Mapper<LongWritable, Text, Text, Text> {
             public void map(LongWritable offset, Text lineText, Context context)
                     throws IOException, InterruptedException {
-                Matcher m1 = RECORD_SEPERATOR.matcher(lineText.toString());
-                String key = null;
-                String content = null;
-                while(m1.find()){
-                    key = m1.group(1).trim();
-                    content = m1.group(2);
-                }
+                String [] values = RECORD_SEPERATOR.split(lineText.toString());
+                String key = values[0].trim();
+                String content = values[1];
                 content = updateValueIn(PAGE_RANK_TAG, content, pageRankTable.get(key));
-                context.write(new Text(key), new Text(content));
+                context.write(new Text(key), new Text(START_DELIMITER+content));
 
             }
         }

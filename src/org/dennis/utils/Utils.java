@@ -14,13 +14,13 @@ import java.util.regex.Pattern;
  */
 public class Utils {
     private static final Logger LOG = Logger.getLogger(Utils.class);
-    public static final String DELIMITER = "#%^^%#";
-    public static final String START_DELIMITER = "##%%^&^%%##";
+    public static final String DELIMITER = "####";
+    public static final String START_DELIMITER = "#!#!#";
     public static final String OUTLINK_SIZE_TAG = "outlinkSize";
     public static final String PAGE_RANK_TAG = "pageRank";
     public static final String OUTLINKS_TAG = "outlinks";
     public static final String TITLE = "title";
-    public static final String TEMP_PAGE_RANK = "output/pagerank/temp_page_rank";
+    public static final String TEMP_PAGE_RANK = "output/temp_pr";
     public static final String LINK_GRAPH = "output/pagerank/link_graph";
 
     private static String getStartTag(String tagName){
@@ -50,7 +50,7 @@ public class Utils {
         String newTagValue = putValueIn(tag, newValue);
         int firstIndex = line.indexOf(getStartTag(tag));
         int lastIndex = line.indexOf(getEndTag(tag));
-        return tag.substring(firstIndex)+newTagValue+tag.substring(lastIndex+1, tag.length());
+        return line.substring(firstIndex)+newTagValue+line.substring(lastIndex+1, line.length());
     }
     
     public static int getCount(String value, String delimiter){
