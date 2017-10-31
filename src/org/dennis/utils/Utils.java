@@ -20,7 +20,8 @@ public class Utils {
     public static final String PAGE_RANK_TAG = "pageRank";
     public static final String OUTLINKS_TAG = "outlinks";
     public static final String TITLE = "title";
-    public static final String TEMP_PAGE_RANK = "temp_page_rank";
+    public static final String TEMP_PAGE_RANK = "output/pagerank/temp_page_rank";
+    public static final String LINK_GRAPH = "output/pagerank/link_graph";
 
     private static String getStartTag(String tagName){
         return "<"+tagName+">";
@@ -71,6 +72,18 @@ public class Utils {
     public static void deleteFile(Configuration config, String[] fileNames) {
         for (String eachFileName : fileNames) {
             deleteFile(config, eachFileName);
+        }
+    }
+
+    public static void renameFile(Configuration config, String fileName, String newFileName){
+        try {
+            FileSystem fs = FileSystem.get(config);
+            if (fs.exists(new Path(fileName))) {
+            /*If exist delete the output path*/
+                fs.rename(new Path(fileName), new Path(newFileName));
+            }
+        }catch (IOException e){
+            LOG.error("Error reading fileSystem during cleanUp");
         }
     }
 

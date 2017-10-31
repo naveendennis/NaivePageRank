@@ -64,7 +64,7 @@ public class LinkGraph extends Configured implements Tool {
             String wikiLine = lineText.toString();
             Pattern linkPat = Pattern .compile("\\[\\[.*?]\\]");
             Matcher m = linkPat.matcher(wikiLine); // extract outgoing links
-            String pageName = getValueIn("title", wikiLine).trim();
+            String pageName = getValueIn(TITLE, wikiLine).trim();
             allPageIds.add(pageName);
             while(m.find()) { // loop on each outgoing link
                 String url = m.group()
