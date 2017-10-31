@@ -2,10 +2,7 @@ package org.dennis.pagerank;
 
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.conf.Configured;
-import org.apache.hadoop.fs.Path;
-import org.apache.hadoop.io.DoubleWritable;
-import org.apache.hadoop.io.LongWritable;
-import org.apache.hadoop.io.Text;
+import org.apache.hadoop.io.*;
 import org.apache.hadoop.mapreduce.Job;
 import org.apache.hadoop.mapreduce.Mapper;
 import org.apache.hadoop.mapreduce.Reducer;
@@ -17,7 +14,6 @@ import org.apache.log4j.Logger;
 
 import java.io.IOException;
 import java.util.*;
-import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 import static org.dennis.utils.Utils.*;
@@ -61,9 +57,12 @@ public class PageRank extends Configured implements Tool{
             initialLocation = TEMP_PAGE_RANK+"_"+i;
             pageRankTable.clear();
         }
-        res = ToolRunner.run(new PRUpdate(),
-                new String[]{initialLocation, TEMP_PAGE_RANK + "_" + i});
-        renameFile(getConf(), initialLocation, args[1]);
+        pageRankTable = null;
+
+        if (res == 0) {
+            res = ToolRunner.run(new Sorter(),
+                    new String[]{initialLocation, args[1]});
+        }
         return res;
     }
 
@@ -79,7 +78,7 @@ public class PageRank extends Configured implements Tool{
             populatePageRankJob.setJarByClass(this.getClass());
 
             FileInputFormat.addInputPaths(populatePageRankJob, args[0]);
-            FileOutputFormat.setOutputPath(populatePageRankJob, new Path(args[1]));
+            FileOutputFormat.setOutputPath(populatePageRankJob, getFilePath(args[1]));
 
             populatePageRankJob.setMapperClass(PRInitializeMap.class);
             populatePageRankJob.setReducerClass(PRInitializeReduce.class);
@@ -102,7 +101,7 @@ public class PageRank extends Configured implements Tool{
 
                     String pageRankValue = getValueIn(PAGE_RANK_TAG, content.toString());
                     pageRankTable.put(key, pageRankValue);
-                    context.write(new Text(key), new Text(pageRankValue));
+                    context.write(getText(key), getText(pageRankValue));
             }
 
         }
@@ -131,7 +130,7 @@ public class PageRank extends Configured implements Tool{
             computePRJob.setJarByClass(this.getClass());
 
             FileInputFormat.addInputPaths(computePRJob, args[0]);
-            FileOutputFormat.setOutputPath(computePRJob, new Path(args[1]));
+            FileOutputFormat.setOutputPath(computePRJob, getFilePath(args[1]));
             computePRJob.setMapperClass(PRComputeMap.class);
             computePRJob.setReducerClass(PRComputeReduce.class);
             computePRJob.setMapOutputKeyClass(Text.class);
@@ -154,7 +153,7 @@ public class PageRank extends Configured implements Tool{
                 for (String eachOutlink : outLinksList) {
                     LOG.info("PRComputeMap: "+eachOutlink.trim()+" => "+pageRankTable.get(eachOutlink.trim()));
                     if (pageRankTable.containsKey(eachOutlink.trim())) {
-                        context.write(new Text(key), new DoubleWritable(
+                        context.write(getText(key), new DoubleWritable(
                                 Double.parseDouble(
                                         pageRankTable.get(eachOutlink.trim())) / outLinksLength));
                     }
@@ -188,7 +187,7 @@ public class PageRank extends Configured implements Tool{
             prUpdateJob.setJarByClass(this.getClass());
 
             FileInputFormat.addInputPaths(prUpdateJob, args[0]);
-            FileOutputFormat.setOutputPath(prUpdateJob, new Path(args[1]));
+            FileOutputFormat.setOutputPath(prUpdateJob, getFilePath(args[1]));
             prUpdateJob.setMapperClass(PRUpdateMap.class);
             prUpdateJob.setReducerClass(PRUpdateReduce.class);
             prUpdateJob.setMapOutputKeyClass(Text.class);
@@ -206,7 +205,7 @@ public class PageRank extends Configured implements Tool{
                 String key = values[0].trim();
                 String content = values[1];
                 content = updateValueIn(PAGE_RANK_TAG, content, pageRankTable.get(key));
-                context.write(new Text(key), new Text(START_DELIMITER+content));
+                context.write(getText(key), getText(START_DELIMITER+content));
 
             }
         }
@@ -222,5 +221,74 @@ public class PageRank extends Configured implements Tool{
         }
     }
 
+    public static class Sorter extends Configured implements Tool{
+        @Override
+        public int run(String[] args) throws Exception {
+            /**
+             *  Using the map as lookup calculate the page rank
+             */
+            Configuration currentConfig = getConf();
+
+            Job sorterJob = Job.getInstance(currentConfig);
+            sorterJob.setJarByClass(this.getClass());
+
+            FileInputFormat.addInputPaths(sorterJob, args[0]);
+            FileOutputFormat.setOutputPath(sorterJob, getFilePath(args[1]));
+            sorterJob.setMapperClass(SorterMap.class);
+            sorterJob.setReducerClass(SorterReduce.class);
+            sorterJob.setMapOutputKeyClass(DoubleWritable.class);
+            sorterJob.setMapOutputValueClass(Text.class);
+            sorterJob.setOutputKeyClass(DoubleWritable.class);
+            sorterJob.setOutputValueClass(Text.class);
+            //set the comparator for sorting in decreasing order
+            sorterJob.setSortComparatorClass(CustomDecreasingComparator.class);
+            //important to set this since we need to perform one sort on the entire collection
+            sorterJob.setNumReduceTasks(1);
+            int result = sorterJob.waitForCompletion(true) ? 0 : 1;
+            cleanUp(currentConfig, new String[] {TEMP_LOC});
+            return result;
+        }
+
+        /**
+         * Comparator is used to sort the output values in the decreasing order to show the highest ranked files first
+         */
+
+        static class CustomDecreasingComparator extends WritableComparator {
+
+            public CustomDecreasingComparator() {
+            }
+
+            @SuppressWarnings("rawtypes")
+            @Override
+            public int compare(WritableComparable a, WritableComparable b) {
+                DoubleWritable a1 = (DoubleWritable)a;
+                DoubleWritable b1 = (DoubleWritable)b;
+                return -1 * a1.compareTo(b1);
+            }
+        }
+
+        public static class SorterMap extends Mapper<LongWritable, Text, DoubleWritable, Text>{
+            @Override
+            public void map(LongWritable pageId, Text lineText, Context context)
+                    throws IOException, InterruptedException {
+                String [] values = RECORD_SEPERATOR.split(lineText.toString());
+                String key = values[0].trim();
+                String content = values[1];
+                context.write(new DoubleWritable(Double.valueOf(getValueIn(PAGE_RANK_TAG, content).trim())),
+                        getText(key));
+            }
+        }
+
+        public static class SorterReduce extends Reducer<Text, DoubleWritable, DoubleWritable, Text>{
+
+            @Override
+            public void reduce(Text key, Iterable<DoubleWritable> values, Context context)
+                    throws IOException, InterruptedException {
+                for (DoubleWritable eachValue : values){
+                    context.write(eachValue, key);
+                }
+            }
+        }
+    }
 
 }

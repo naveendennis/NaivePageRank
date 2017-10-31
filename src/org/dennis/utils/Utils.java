@@ -3,9 +3,12 @@ package org.dennis.utils;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
+import org.apache.hadoop.io.Text;
 import org.apache.log4j.Logger;
 
 import java.io.IOException;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -20,8 +23,9 @@ public class Utils {
     public static final String PAGE_RANK_TAG = "pageRank";
     public static final String OUTLINKS_TAG = "outlinks";
     public static final String TITLE = "title";
-    public static final String TEMP_PAGE_RANK = "output/temp_pr";
-    public static final String LINK_GRAPH = "output/pagerank/link_graph";
+    public static final String TEMP_LOC = "output/temp/";
+    public static final String TEMP_PAGE_RANK = TEMP_LOC+"temp_page_rank";
+    public static final String LINK_GRAPH = TEMP_LOC+"link_graph";
 
     private static String getStartTag(String tagName){
         return "<"+tagName+">";
@@ -57,34 +61,43 @@ public class Utils {
         return value.split(delimiter).length;
     }
 
-    public static void deleteFile(Configuration config, String fileName){
+    public static void cleanUp(Configuration config, String fileName){
         try {
             FileSystem fs = FileSystem.get(config);
-            if (fs.exists(new Path(fileName))) {
+            if (fs.exists(getFilePath(fileName))) {
             /*If exist delete the output path*/
-                fs.delete(new Path(fileName), true);
+                fs.delete(getFilePath(fileName), true);
             }
         }catch (IOException e){
             LOG.error("Error reading fileSystem during cleanUp");
         }
     }
 
-    public static void deleteFile(Configuration config, String[] fileNames) {
+    public static void cleanUp(Configuration config, String[] fileNames) {
         for (String eachFileName : fileNames) {
-            deleteFile(config, eachFileName);
+            cleanUp(config, eachFileName);
         }
     }
 
     public static void renameFile(Configuration config, String fileName, String newFileName){
         try {
             FileSystem fs = FileSystem.get(config);
-            if (fs.exists(new Path(fileName))) {
+            if (fs.exists(getFilePath(fileName))) {
             /*If exist delete the output path*/
-                fs.rename(new Path(fileName), new Path(newFileName));
+                fs.rename(getFilePath(fileName), getFilePath(newFileName));
             }
         }catch (IOException e){
             LOG.error("Error reading fileSystem during cleanUp");
         }
     }
+
+    public static Path getFilePath(String fileName){
+        return new Path(fileName);
+    }
+
+    public static Text getText(String value){
+        return new Text(value);
+    }
+
 
 }

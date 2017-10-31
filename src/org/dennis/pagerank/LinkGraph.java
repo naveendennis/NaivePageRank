@@ -42,7 +42,7 @@ public class LinkGraph extends Configured implements Tool {
         job.setJarByClass(this.getClass());
 
         FileInputFormat.addInputPaths(job, args[0]);
-        FileOutputFormat.setOutputPath(job, new Path(args[1]));
+        FileOutputFormat.setOutputPath(job, getFilePath(args[1]));
 
         job.setMapperClass(Map.class);
         job.setReducerClass(Reduce.class);
@@ -72,7 +72,7 @@ public class LinkGraph extends Configured implements Tool {
                         .replace("]]", ""); // drop the brackets and any nested ones if any
                 if(url!=null && !url.isEmpty()) {
                     allPageIds.add(url.trim());
-                    context.write(new Text(pageName), new Text(url.trim()));
+                    context.write(getText(pageName), getText(url.trim()));
                     LOG.info("Mapper => "+ pageName +": "+url );
                 }
             }
@@ -99,7 +99,7 @@ public class LinkGraph extends Configured implements Tool {
             String result = START_DELIMITER+putValueIn(OUTLINK_SIZE_TAG, String.valueOf(outLinkIds.size()));
             result += putValueIn(PAGE_RANK_TAG, String.valueOf(1/(double)numberOfPages));
             result += putValueIn(OUTLINKS_TAG, outlinkStrBuff.toString());
-            context.write(pageId, new Text(result));
+            context.write(pageId, getText(result));
 
         }
     }
