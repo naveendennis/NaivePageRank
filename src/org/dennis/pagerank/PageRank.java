@@ -258,7 +258,8 @@ public class PageRank{
 
         @Override
         public int run(String[] args) throws Exception {
-            Job job = Job.getInstance(getConf(), " org.dennis.pagerank.SorterDriver ");
+            Configuration currentConfiguration = getConf();
+            Job job = Job.getInstance(currentConfiguration, " org.dennis.pagerank.SorterDriver ");
             job.setJarByClass(this.getClass());
 
             FileInputFormat.addInputPaths(job, LINK_GRAPH_LOC);
@@ -267,36 +268,39 @@ public class PageRank{
             job.setReducerClass(Identity.class);
             job.setMapOutputKeyClass(DoubleWritable.class);
             job.setMapOutputValueClass(Text.class);
-            job.setOutputKeyClass(DoubleWritable.class);
-            job.setOutputValueClass(Text.class);
+            job.setOutputKeyClass(Text.class);
+            job.setOutputValueClass(DoubleWritable.class);
             job.setSortComparatorClass(LongWritable.DecreasingComparator.class);
             job.setNumReduceTasks(1);
-            return job.waitForCompletion(true) ? 0 : 1;
+            int result = job.waitForCompletion(true) ? 0 : 1;
+            /*
+             * Cleans up the link graph before execution terminates
+             */
+            cleanUp(FileSystem.get(currentConfiguration), LINK_GRAPH_PATH);
+            return result;
         }
 
         /**
-         * Used as part of the sorter to extract values by <pageRank, pageId>
+         * Used as part of the sorter to extract values by <pageId, pageRank>
          */
         public static class ExtractParser extends Mapper<LongWritable, Text, DoubleWritable, Text> {
 
             public void map(LongWritable offset, Text lineText, Context context)
                     throws IOException, InterruptedException {
                 RecordParser recordParser = new RecordParser(lineText.toString());
-                context.write(new DoubleWritable(recordParser.pageRank), getText(recordParser.pageId));
-
+                context.write(new DoubleWritable(recordParser.pageRank), getText(recordParser.pageId) );
             }
         }
 
         /**
          * When sorting the values are just passed as Identity
          */
-        public static class Identity extends Reducer<DoubleWritable, Text, DoubleWritable, Text> {
-
+        public static class Identity extends Reducer<DoubleWritable, Text, Text, DoubleWritable> {
             @Override
-            public void reduce(DoubleWritable pagerank, Iterable<Text> pages, Context context)
+            public void reduce(DoubleWritable pageRank, Iterable<Text> pageId, Context context)
                     throws IOException, InterruptedException {
-                for (Text eachPage: pages){
-                    context.write(pagerank, eachPage);
+                for (Text eachPageId: pageId){
+                    context.write(eachPageId, pageRank);
                 }
             }
         }

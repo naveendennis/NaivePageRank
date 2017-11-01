@@ -1,9 +1,11 @@
 package org.dennis.utils;
 
+import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.io.Text;
 import org.apache.log4j.Logger;
 
+import java.io.IOException;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -108,5 +110,17 @@ public class Utils {
         return new Text(value);
     }
 
+
+    /**
+     * Cleans up the directory path mentioned by the pathLocation
+     * @param fs FileSystem object to access the path
+     * @param pathLocation Path object that points to the location
+     * @throws IOException exception is thrown if access to the location is not available
+     */
+    public static void cleanUp(FileSystem fs, Path pathLocation) throws IOException{
+        if (fs.exists(pathLocation)){
+            fs.delete(pathLocation, true);
+        }
+    }
 
 }
