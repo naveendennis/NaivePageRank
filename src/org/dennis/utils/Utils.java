@@ -55,41 +55,6 @@ public class Utils {
         return openingTag+value.trim()+closingTag;
     }
 
-
-    public static int getCount(String value, String delimiter){
-        return value.split(delimiter).length;
-    }
-
-    public static void cleanUp(Configuration config, String fileName){
-        try {
-            FileSystem fs = FileSystem.get(config);
-            if (fs.exists(getFilePath(fileName))) {
-            /*If exist delete the output path*/
-                fs.delete(getFilePath(fileName), true);
-            }
-        }catch (IOException e){
-            LOG.error("Error reading fileSystem during cleanUp");
-        }
-    }
-
-    public static void cleanUp(Configuration config, String[] fileNames) {
-        for (String eachFileName : fileNames) {
-            cleanUp(config, eachFileName);
-        }
-    }
-
-    public static void renameFile(Configuration config, String fileName, String newFileName){
-        try {
-            FileSystem fs = FileSystem.get(config);
-            if (fs.exists(getFilePath(fileName))) {
-            /*If exist delete the output path*/
-                fs.rename(getFilePath(fileName), getFilePath(newFileName));
-            }
-        }catch (IOException e){
-            LOG.error("Error reading fileSystem during cleanUp");
-        }
-    }
-
     public static String updateValueIn(String tag, String line, String newValue){
         int startIndex = line.lastIndexOf(getStartTag(tag))+tag.length()+2;
         int endIndex = line.indexOf(getEndTag(tag));
@@ -97,16 +62,6 @@ public class Utils {
         result.replace(startIndex, endIndex, newValue);
         return result.toString();
     }
-
-    /*
-     *Delete the given file/dir from hdfs
-     * */
-    public static void deleteDir(String path, FileSystem fs) throws IOException {
-        if (fs.exists(new Path(path))) {
-            fs.delete(new Path(path), true);
-        }
-    }
-
 
     public static Path getFilePath(String fileName){
         return new Path(fileName);

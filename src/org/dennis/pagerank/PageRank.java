@@ -29,8 +29,17 @@ import static org.dennis.utils.Utils.*;
 public class PageRank{
     /**
      * LG_RECORD_SEPERATOR - pattern used to denote the seperation between the <key, value>
+     *
      * OUTLINK_SEPERATOR - pattern used to denote the separation between the outlinks within the outlinks tag
-     * TEMP_PAGE_RANK_PATH, LINK_GRAPH_PATH, RECONTRUCT_GRAPH_PATH are the three paths for 
+     *
+     * TEMP_PAGE_RANK_PATH, LINK_GRAPH_PATH, RECONTRUCT_GRAPH_PATH are the three paths where files will be stored for
+     * every iteration.
+     *
+     * TEMP_PAGE_RANK_PATH - Used to store the page ranks at each iteration
+     *
+     * LINK_GRAPH_PATH - Used to store the link graph with the updated page ranks in the end of every iteration
+     *
+     * RECONTRUCT_GRAPH_PATH - Used to store the updated link graph temporarily.
      */
     private static final Pattern LG_RECORD_SEPERATOR = Pattern.compile(RECORD_DELIMITER);
     private static final Pattern OUTLINK_SEPARATOR = Pattern.compile(DELIMITER);
@@ -41,6 +50,10 @@ public class PageRank{
     public static final Path RECONTRUCT_GRAPH_PATH = new Path(RECONTRUCT_GRAPH_LOC);
 
 
+    /**
+     * Record Parser makes it easy to extract all the details about the graph from the LinkGraph file. Extensively used
+     * in extraction just before sorting.
+     */
     public static class RecordParser{
         String pageId;
         String[] outLinks;
@@ -55,8 +68,14 @@ public class PageRank{
 
     }
 
+    /**
+     * The entire page rank computation is triggered from there using three Driver classes. They are LinkGraph,
+     * PageRanksDriver, ReconstructionFileDriver and SorterDriver.
+     * @param args
+     * @throws Exception
+     */
     public static void main(String args[]) throws Exception {
-        int statusCode = 0;
+        int statusCode;
         statusCode = ToolRunner.run(new LinkGraph(), new String[]{args[0], LINK_GRAPH_LOC});
         for(int iterator = 0 ; iterator < 10; iterator++) {
             if (statusCode == 0) {
@@ -73,6 +92,37 @@ public class PageRank{
         System.exit(statusCode);
     }
 
+    /**
+     * This driver triggers the operation to construct a pagerank vector for each iteration from LINK_GRAPH_PATH.
+     * The output is stored in TEMP_PAGE_RANK_PATH.
+     */
+    static class PageRanksDriver extends Configured implements Tool{
+
+        @Override
+        public int run(String[] args) throws Exception {
+            Job job = Job.getInstance(getConf(), " org.dennis.pagerank.PageRanksDriver ");
+            job.setJarByClass(this.getClass());
+
+            FileInputFormat.addInputPaths(job, LINK_GRAPH_LOC);
+            FileOutputFormat.setOutputPath(job, TEMP_PAGE_RANK_PATH);
+            job.setMapperClass(PRRemapper.class);
+            job.setReducerClass(PRCalculator.class);
+            job.setMapOutputKeyClass(Text.class);
+            job.setMapOutputValueClass(DoubleWritable.class);
+            job.setOutputKeyClass(Text.class);
+            job.setOutputValueClass(Text.class);
+
+            return job.waitForCompletion(true) ? 0 : 1;
+        }
+    }
+
+    /**
+     * This driver takes multiple inputs from two locations : LINK_GRAPH_PATH and TEMP_PAGE_RANK_PATH.
+     *
+     * The output is stored in RECONTRUCT_GRAPH_PATH. Since this is iterated.
+     * RECONTRUCT_GRAPH_PATH is renamed to LINK_GRAPH_PATH after each iteration and TEMP_PAGE_RANK_PATH is deleted to
+     * avoid clashes in naming.
+     */
     static class ReconstructFileDriver extends Configured implements Tool{
 
         @Override
@@ -100,27 +150,7 @@ public class PageRank{
             return result;
         }
     }
-
-    static class PageRanksDriver extends Configured implements Tool{
-
-        @Override
-        public int run(String[] args) throws Exception {
-            Job job = Job.getInstance(getConf(), " org.dennis.pagerank.PageRanksDriver ");
-            job.setJarByClass(this.getClass());
-
-            FileInputFormat.addInputPaths(job, LINK_GRAPH_LOC);
-            FileOutputFormat.setOutputPath(job, TEMP_PAGE_RANK_PATH);
-            job.setMapperClass(PRRemapper.class);
-            job.setReducerClass(PRCalculator.class);
-            job.setMapOutputKeyClass(Text.class);
-            job.setMapOutputValueClass(DoubleWritable.class);
-            job.setOutputKeyClass(Text.class);
-            job.setOutputValueClass(Text.class);
-
-            return job.waitForCompletion(true) ? 0 : 1;
-        }
-    }
-
+    
     static class SorterDriver extends Configured implements Tool{
 
         @Override
