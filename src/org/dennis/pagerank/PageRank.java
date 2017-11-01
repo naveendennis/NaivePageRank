@@ -131,8 +131,8 @@ public class PageRank{
             Job job = Job.getInstance(config, " org.dennis.pagerank.ReconstructFile ");
             job.setJarByClass(this.getClass());
 
-            MultipleInputs.addInputPath(job, LINK_GRAPH_PATH, TextInputFormat.class, ParseLinkGraph.class);
-            MultipleInputs.addInputPath(job, TEMP_PAGE_RANK_PATH, TextInputFormat.class, ParsePageRanks.class);
+            MultipleInputs.addInputPath(job, LINK_GRAPH_PATH, TextInputFormat.class, LinkGraphParseMapper.class);
+            MultipleInputs.addInputPath(job, TEMP_PAGE_RANK_PATH, TextInputFormat.class, LinkGraphParseMapper.class);
             FileOutputFormat.setOutputPath(job, RECONTRUCT_GRAPH_PATH);
             job.setReducerClass(ReconstructGraph.class);
             job.setMapOutputKeyClass(Text.class);
@@ -140,6 +140,10 @@ public class PageRank{
             job.setOutputKeyClass(Text.class);
             job.setOutputValueClass(Text.class);
             int result= job.waitForCompletion(true) ? 0 : 1;
+            /*
+            After each iteration the RECONTRUCT_GRAPH_PATH obtained from this step is renamed as LINK_GRAPH_PATH.
+
+             */
             FileSystem hdfs = FileSystem.get(config);
             // delete existing directory
             if (hdfs.exists(LINK_GRAPH_PATH)) {
@@ -175,16 +179,10 @@ public class PageRank{
         }
     }
 
-    public static class ParseLinkGraph extends Mapper<LongWritable, Text, Text, Text> {
-
-        public void map(LongWritable offset, Text lineText, Context context)
-                throws IOException, InterruptedException {
-            String[] attr = LG_RECORD_SEPERATOR.split(lineText.toString());
-            context.write(getText(attr[0].trim()), getText(attr[1].trim()));
-        }
-    }
-
-    public static class ParsePageRanks extends Mapper<LongWritable, Text, Text, Text> {
+    /**
+     * READ
+     */
+    public static class LinkGraphParseMapper extends Mapper<LongWritable, Text, Text, Text> {
 
         public void map(LongWritable offset, Text lineText, Context context)
                 throws IOException, InterruptedException {
@@ -239,7 +237,8 @@ public class PageRank{
                 context.write(pageId, getText(RECORD_DELIMITER + updateValueIn(PAGE_RANK_TAG, originalLine, newPageRank)));
             }else if(originalLine!=null && !getValueIn(PAGE_RANK_TAG, originalLine).isEmpty()){
                 LOG.info("ORIGINAL LINE => "+originalLine);
-                context.write(pageId, getText(RECORD_DELIMITER +originalLine));
+                context.write(pageId, getText(RECORD_DELIMITER +
+                        updateValueIn(PAGE_RANK_TAG, originalLine, String.valueOf((1-DECAY)))));
             }
         }
     }
