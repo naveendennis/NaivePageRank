@@ -9,7 +9,6 @@ import org.apache.hadoop.mapreduce.Reducer;
 import org.apache.hadoop.mapreduce.lib.input.FileInputFormat;
 import org.apache.hadoop.mapreduce.lib.output.FileOutputFormat;
 import org.apache.hadoop.util.Tool;
-import org.apache.hadoop.util.ToolRunner;
 import org.apache.log4j.Logger;
 
 import java.io.IOException;
@@ -98,7 +97,7 @@ public class LinkGraph extends Configured implements Tool {
             }
 
 
-            String result = putValueIn(PAGE_RANK_TAG, String.valueOf(1/(double)numberOfPages));
+            String result = RECORD_DELIMITER+putValueIn(PAGE_RANK_TAG, String.valueOf(1/(double)numberOfPages));
             result += putValueIn(OUTLINKS_TAG, outlinkStrBuff.toString());
             context.write(pageId, getText(result));
 

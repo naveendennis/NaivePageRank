@@ -44,7 +44,7 @@ public class Utils {
         try {
             return title_matcher.group(1);
         }catch (IllegalStateException e){
-            LOG.info("Illegal State Exception thrown . . .");
+            LOG.info("Skipping page - outlink page which has no pagerank is possibly detected...");
             return "";
         }
     }

@@ -17,6 +17,7 @@ import org.apache.hadoop.util.ToolRunner;
 import org.apache.log4j.Logger;
 
 import java.io.IOException;
+import java.math.BigDecimal;
 import java.util.regex.Pattern;
 
 import static org.dennis.utils.Utils.*;
@@ -150,7 +151,10 @@ public class PageRank{
             return result;
         }
     }
-    
+
+    /**
+     * This driver sorts the values
+     */
     static class SorterDriver extends Configured implements Tool{
 
         @Override
@@ -166,8 +170,38 @@ public class PageRank{
             job.setMapOutputValueClass(Text.class);
             job.setOutputKeyClass(DoubleWritable.class);
             job.setOutputValueClass(Text.class);
-
+            job.setSortComparatorClass(CustomDecreasingComparator.class);
+            job.setNumReduceTasks(1);
             return job.waitForCompletion(true) ? 0 : 1;
+        }
+
+        /*
+         * Comparator is used to sort the output values in the decreasing order to show the highest ranked files first
+         * */
+        static class CustomDecreasingComparator extends WritableComparator {
+
+            public CustomDecreasingComparator() {
+            }
+
+            /*
+            * Method returns -1 if obj1 > obj2 and vice versa(descending order)
+            * */
+            @Override
+            public int compare(byte[] b1, int s1, int l1, byte[] b2, int s2, int l2) {
+                try {
+                    LOG.info("CustomeDecreasing COMPARATOR => "+new String(b1, s1, l1).toString());
+                    BigDecimal bd1 = new BigDecimal(new String(b1, s1, l1).substring(1));//remove the prepended "T" in the string handed to us
+                    BigDecimal bd2 = new BigDecimal(new String(b2, s2, l2).substring(1));
+                    if (bd1.compareTo(bd2) > 0) {//return -1 if left is greater(opposite of compareTo method)
+                        return -1;
+                    } else if (bd1.compareTo(bd2) < 0) {
+                        return 1;
+                    }
+                } catch (NumberFormatException e) {
+                    throw new NumberFormatException("STRING THAT WAS BEING PARSED: " + new String(b1, s1, l1) + " AND " + new String(b2, s2, l2));
+                }
+                return 0;
+            }
         }
     }
 
@@ -224,9 +258,7 @@ public class PageRank{
                 iterator++;
                 String currentValue = eachValue.toString();
                 if (!getValueIn(NEW_PAGE_RANK_TAG, currentValue).isEmpty()){
-//                    LOG.info("Getting the value of new page rank ... => "+currentValue);
                     newPageRank = getValueIn(NEW_PAGE_RANK_TAG, currentValue);
-//                    LOG.info("Obtained new Page rank value . . . "+newPageRank);
                 }else{
                     originalLine = currentValue;
                 }
