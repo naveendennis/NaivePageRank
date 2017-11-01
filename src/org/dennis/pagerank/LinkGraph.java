@@ -1,7 +1,6 @@
 package org.dennis.pagerank;
 
 import org.apache.hadoop.conf.Configured;
-import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.io.LongWritable;
 import org.apache.hadoop.io.Text;
 import org.apache.hadoop.mapreduce.Job;
@@ -29,13 +28,10 @@ public class LinkGraph extends Configured implements Tool {
 
     private static final Logger LOG = Logger.getLogger(LinkGraph.class);
     private static int numberOfPages ;
+    /**
+     * used for calculating the page ids
+     */
     private static Set<String> allPageIds = new TreeSet<>();
-
-    public static void main(String[] args) throws Exception {
-        int res = ToolRunner.run(new LinkGraph(), args);
-        System.exit(res);
-    }
-
 
     public int run(String[] args) throws Exception {
         Job job = Job.getInstance(getConf(), " org.dennis.pagerank.LinkGraph ");
@@ -54,6 +50,9 @@ public class LinkGraph extends Configured implements Tool {
         return job.waitForCompletion(true) ? 0 : 1;
     }
 
+    /**
+     * Extracts the url outlinks and places each outlink in a key value pair <pageid, outlink>
+     */
     public static class Map extends Mapper<LongWritable, Text, Text, Text> {
 
         public void map(LongWritable offset, Text lineText, Context context)
@@ -79,6 +78,9 @@ public class LinkGraph extends Configured implements Tool {
         }
     }
 
+    /**
+     * <outlinks></outlinks><pagerank></pagerank><numberofoutlinks></numberofoutlinks>
+     */
     public static class Reduce extends Reducer<Text, Text, Text, Text> {
 
         @Override
@@ -96,8 +98,7 @@ public class LinkGraph extends Configured implements Tool {
             }
 
 
-            String result = START_DELIMITER+putValueIn(OUTLINK_SIZE_TAG, String.valueOf(outLinkIds.size()));
-            result += putValueIn(PAGE_RANK_TAG, String.valueOf(1/(double)numberOfPages));
+            String result = putValueIn(PAGE_RANK_TAG, String.valueOf(1/(double)numberOfPages));
             result += putValueIn(OUTLINKS_TAG, outlinkStrBuff.toString());
             context.write(pageId, getText(result));
 
