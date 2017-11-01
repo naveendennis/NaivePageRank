@@ -114,6 +114,41 @@ public class PageRank{
 
             return job.waitForCompletion(true) ? 0 : 1;
         }
+
+        /**
+         * Emits the values by <outlink-page, page-rank(current_page)/len(outlinks)>
+         */
+        public static class PRRemapper extends Mapper<LongWritable, Text, Text, DoubleWritable> {
+
+            public void map(LongWritable offset, Text lineText, Context context)
+                    throws IOException, InterruptedException {
+                LOG.info("PRREMAPPER => "+lineText.toString());
+                RecordParser record = new RecordParser(lineText.toString());
+                for (String eachOutLink: record.outLinks){
+                    context.write(getText(eachOutLink), new DoubleWritable(record.pageRank/record.outLinks.length));
+                }
+            }
+        }
+
+        /**
+         * This calculates the PAGE_RANK_LOC in each iteration
+         */
+        public static class PRCalculator extends Reducer<Text, DoubleWritable, Text, Text> {
+
+            @Override
+            public void reduce(Text pageId, Iterable<DoubleWritable> pageRanks, Context context)
+                    throws IOException, InterruptedException {
+                double result = 0d;
+                // sum up all the pageranks
+                for(DoubleWritable eachPageRank: pageRanks){
+                    result += eachPageRank.get();
+                }
+                // compute with decay
+                result = (1-DECAY) + DECAY * result;
+                context.write(pageId, getText(RECORD_DELIMITER+putValueIn(NEW_PAGE_RANK_TAG, String.valueOf(result))));
+            }
+        }
+
     }
 
     /**
@@ -153,6 +188,67 @@ public class PageRank{
             }
             return result;
         }
+
+        /**
+         * READ the file and splits them into key value pairs using LG_RECORD_SEPARATOR.
+         * Used for reading LINK_GRAPH_LOC and PAGE_RANK_LOC.
+         */
+        public static class LinkGraphParseMapper extends Mapper<LongWritable, Text, Text, Text> {
+
+            public void map(LongWritable offset, Text lineText, Context context)
+                    throws IOException, InterruptedException {
+                String[] attr = LG_RECORD_SEPERATOR.split(lineText.toString());
+                context.write(getText(attr[0].trim()), getText(attr[1].trim()));
+            }
+        }
+
+        /**
+         * This class is used to merge files from two different locations and update the pagerank. So, when the
+         * iteration count / number of values per key is 2 then the new pagerank is updated. If the originalLine
+         * contains PAGE_RANK_TAG then it is a graph with no in-links and so the page-rank is set as (1-d). If
+         * originalLine is null, then the page is a sink which is not considered for page-rank calculation in this
+         * assignment.
+         */
+        public static class ReconstructGraph extends Reducer<Text, Text, Text, Text> {
+
+            @Override
+            public void reduce(Text pageId, Iterable<Text> values, Context context)
+                    throws IOException, InterruptedException {
+                String originalLine = null;
+                String newPageRank = null;
+                long noOfValues = 0;
+                for(Text eachValue: values){
+                    noOfValues++;
+                    String currentValue = eachValue.toString();
+                    if (!getValueIn(NEW_PAGE_RANK_TAG, currentValue).isEmpty()){
+                        // value from PAGE_RANK_LOC
+                        newPageRank = getValueIn(NEW_PAGE_RANK_TAG, currentValue);
+                    }else{
+                        // value from LINK_GRAPH_LOC
+                        originalLine = currentValue;
+                    }
+                }
+            /*
+             * To make sure that only outlink entries which have intial pagerank values are emitted
+             */
+                if (noOfValues == 2) {
+                    // These are normal entries which are found in the LINK_GRAPH with both incoming and outgoing edges
+                    context.write(pageId, getText(RECORD_DELIMITER +
+                            updateValueIn(PAGE_RANK_TAG, originalLine, newPageRank)));
+                }else if(originalLine!=null && !getValueIn(PAGE_RANK_TAG, originalLine).isEmpty()){
+                    // These are entries which have no incoming edges so that page_rank is set as (1-d) since no inlinks are
+                    // available for them.
+                    LOG.info("ORIGINAL LINE => "+originalLine);
+                    context.write(pageId, getText(RECORD_DELIMITER +
+                            updateValueIn(PAGE_RANK_TAG, originalLine, String.valueOf((1-DECAY)))));
+                }
+            /*
+            Pages that do not abide by these are sinks with no outgoing edges and they are not considered for this
+             problem
+             */
+            }
+        }
+
     }
 
     /**
@@ -177,119 +273,34 @@ public class PageRank{
             job.setNumReduceTasks(1);
             return job.waitForCompletion(true) ? 0 : 1;
         }
-    }
 
-    /**
-     * READ the file and splits them into key value pairs using LG_RECORD_SEPARATOR.
-     * Used for reading LINK_GRAPH_LOC and PAGE_RANK_LOC.
-     */
-    public static class LinkGraphParseMapper extends Mapper<LongWritable, Text, Text, Text> {
+        /**
+         * Used as part of the sorter to extract values by <pageRank, pageId>
+         */
+        public static class ExtractParser extends Mapper<LongWritable, Text, DoubleWritable, Text> {
 
-        public void map(LongWritable offset, Text lineText, Context context)
-                throws IOException, InterruptedException {
-            String[] attr = LG_RECORD_SEPERATOR.split(lineText.toString());
-            context.write(getText(attr[0].trim()), getText(attr[1].trim()));
-        }
-    }
+            public void map(LongWritable offset, Text lineText, Context context)
+                    throws IOException, InterruptedException {
+                RecordParser recordParser = new RecordParser(lineText.toString());
+                context.write(new DoubleWritable(recordParser.pageRank), getText(recordParser.pageId));
 
-    /**
-     * Used as part of the sorter to extract values by <pageRank, pageId>
-     */
-    public static class ExtractParser extends Mapper<LongWritable, Text, DoubleWritable, Text> {
-
-        public void map(LongWritable offset, Text lineText, Context context)
-                throws IOException, InterruptedException {
-            RecordParser recordParser = new RecordParser(lineText.toString());
-            context.write(new DoubleWritable(recordParser.pageRank), getText(recordParser.pageId));
-
-        }
-    }
-
-    /**
-     * Emits the values by <outlink-page, page-rank(current_page)/len(outlinks)>
-     */
-    public static class PRRemapper extends Mapper<LongWritable, Text, Text, DoubleWritable> {
-
-        public void map(LongWritable offset, Text lineText, Context context)
-                throws IOException, InterruptedException {
-            LOG.info("PRREMAPPER => "+lineText.toString());
-            RecordParser record = new RecordParser(lineText.toString());
-            for (String eachOutLink: record.outLinks){
-                context.write(getText(eachOutLink), new DoubleWritable(record.pageRank/record.outLinks.length));
             }
         }
-    }
 
-    public static class ReconstructGraph extends Reducer<Text, Text, Text, Text> {
+        /**
+         * When sorting the values are just passed as Identity
+         */
+        public static class Identity extends Reducer<DoubleWritable, Text, DoubleWritable, Text> {
 
-        @Override
-        public void reduce(Text pageId, Iterable<Text> values, Context context)
-                throws IOException, InterruptedException {
-            String originalLine = null;
-            String newPageRank = null;
-            long noOfValues = 0;
-            for(Text eachValue: values){
-                noOfValues++;
-                String currentValue = eachValue.toString();
-                if (!getValueIn(NEW_PAGE_RANK_TAG, currentValue).isEmpty()){
-                    // value from PAGE_RANK_LOC
-                    newPageRank = getValueIn(NEW_PAGE_RANK_TAG, currentValue);
-                }else{
-                    // value from LINK_GRAPH_LOC
-                    originalLine = currentValue;
+            @Override
+            public void reduce(DoubleWritable pagerank, Iterable<Text> pages, Context context)
+                    throws IOException, InterruptedException {
+                for (Text eachPage: pages){
+                    context.write(pagerank, eachPage);
                 }
             }
-            /*
-             * To make sure that only outlink entries which have intial pagerank values are emitted
-             */
-            if (noOfValues == 2) {
-                // These are normal entries which are found in the LINK_GRAPH with both incoming and outgoing edges
-                context.write(pageId, getText(RECORD_DELIMITER +
-                        updateValueIn(PAGE_RANK_TAG, originalLine, newPageRank)));
-            }else if(originalLine!=null && !getValueIn(PAGE_RANK_TAG, originalLine).isEmpty()){
-                // These are entries which have no incoming edges so that page_rank is set as (1-d) since no inlinks are
-                // available for them.
-                LOG.info("ORIGINAL LINE => "+originalLine);
-                context.write(pageId, getText(RECORD_DELIMITER +
-                        updateValueIn(PAGE_RANK_TAG, originalLine, String.valueOf((1-DECAY)))));
-            }
-            /*
-            Pages that do not abide by these are sinks with no outgoing edges and they are not considered for this
-             problem
-             */
         }
     }
 
-    /**
-     * This calculates the PAGE_RANK_LOC in each iteration
-     */
-    public static class PRCalculator extends Reducer<Text, DoubleWritable, Text, Text> {
 
-        @Override
-        public void reduce(Text pageId, Iterable<DoubleWritable> pageRanks, Context context)
-                throws IOException, InterruptedException {
-            double result = 0d;
-            // sum up all the pageranks
-            for(DoubleWritable eachPageRank: pageRanks){
-                result += eachPageRank.get();
-            }
-            // compute with decay
-            result = (1-DECAY) + DECAY * result;
-            context.write(pageId, getText(RECORD_DELIMITER+putValueIn(NEW_PAGE_RANK_TAG, String.valueOf(result))));
-        }
-    }
-
-    /**
-     * When sorting the values are just passed as Identity
-     */
-    public static class Identity extends Reducer<DoubleWritable, Text, DoubleWritable, Text> {
-
-        @Override
-        public void reduce(DoubleWritable pagerank, Iterable<Text> pages, Context context)
-                throws IOException, InterruptedException {
-            for (Text eachPage: pages){
-                context.write(pagerank, eachPage);
-            }
-        }
-    }
 }
